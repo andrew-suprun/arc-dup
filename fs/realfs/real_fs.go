@@ -17,10 +17,14 @@ type FS struct {
 }
 
 func New(path string, idx int, lc *lifecycle.Lifecycle) *FS {
-	return &FS{path: path, lc: lc}
+	return &FS{path: path, idx: idx, lc: lc}
 }
 
-func (fs *FS) Scan(events fs.Events) {
+func (fsys *FS) Root() string {
+	return fsys.path
+}
+
+func (fsys *FS) Scan(events fs.Events) {
 }
 
 func (fs *FS) Sync(commands []any, events fs.Events) {

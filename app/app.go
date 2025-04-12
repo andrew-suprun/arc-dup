@@ -16,21 +16,17 @@ func Run(fss []fs.FS, lc *lifecycle.Lifecycle) {
 	m := make(model, 1)
 	p := tea.NewProgram(m)
 
-	scanStates := make([]scanState, len(fss))
-	state := &state{fss: fss, lc: lc, events: events{p}, scanStates: scanStates}
+	archives := make([]*archive, len(fss))
+	for i, fs := range fss {
+		archives[i] = &archive{fs: fs}
+	}
+
+	state := &state{archives: archives, lc: lc, events: events{p}}
+	m <- state
 
 	for _, fs := range fss {
 		fs.Scan(state.events)
 	}
-
-	m <- state
-
-	go func() {
-		for i := 0; ; i++ {
-			time.Sleep(time.Second)
-			p.Send(i)
-		}
-	}()
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
@@ -59,9 +55,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
-	case fs.EventDebugScan:
+	case fs.FileMetas:
 		state := <-m
-		state.scanStates[msg.Idx].n = msg.N
+		archive := state.archives[msg.Idx]
+		for _, meta := range msg.Metas {
+			archive.files = append(archive.files, &file{
+				path:    meta.Path,
+				size:    meta.Size,
+				modTime: meta.ModTime,
+				hash:    meta.Hash,
+			})
+			if meta.Hash == "" {
+				archive.size++
+			}
+		}
+		m <- state
+
+	case fs.FileHashed:
+		state := <-m
+		archive := state.archives[msg.Idx]
+		file := archive.findFile(msg.Path)
+		file.hash = msg.Hash
+		archive.done++
+		archive.archiveState = archiveScanned
 		m <- state
 	}
 	return m, nil
@@ -70,20 +86,55 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	state := <-m
 	b := strings.Builder{}
-	for i, scanState := range state.scanStates {
-		fmt.Fprintf(&b, "scanning %d: %d\n", i, scanState.n)
+	for _, archive := range state.archives {
+		switch archive.archiveState {
+		case archiveStarted:
+			fmt.Fprintf(&b, "scanning %s\n", archive.fs.Root())
+		case archiveScanned:
+			fmt.Fprintf(&b, "hashing %s\n", archive.fs.Root())
+		}
 	}
 	m <- state
 	return b.String()
 }
 
+type archiveState int
+
+const (
+	archiveStarted archiveState = iota
+	archiveScanned
+	archiveHashed
+)
+
 type state struct {
-	fss        []fs.FS
-	lc         *lifecycle.Lifecycle
-	events     events
-	scanStates []scanState
+	archives []*archive
+	lc       *lifecycle.Lifecycle
+	events   events
 }
 
-type scanState struct {
-	n int
+type archive struct {
+	archiveState archiveState
+	fs           fs.FS
+	files        files
+	size         int
+	done         int
+}
+
+type file struct {
+	path    string
+	size    int
+	done    int
+	modTime time.Time
+	hash    string
+}
+
+type files []*file
+
+func (arc *archive) findFile(path string) *file {
+	for _, file := range arc.files {
+		if file.path == path {
+			return file
+		}
+	}
+	return nil
 }
