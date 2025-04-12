@@ -33,13 +33,17 @@ func (fs *FS) Sync(commands []any, events fs.Events) {
 }
 
 func (f *FS) scanArchive(events fs.Events) {
-	time.Sleep(time.Second * time.Duration(f.idx))
-	metas := archives[f.path]
+	metas := []fs.FileMeta{}
+	for _, meta := range archives[f.path] {
+		meta.Hash = ""
+		metas = append(metas, meta)
+	}
 	events.Send(fs.FileMetas{
 		Idx:   f.idx,
 		Metas: metas,
 	})
 	time.Sleep(time.Second * time.Duration(f.idx))
+	metas = archives[f.path]
 	for _, file := range metas {
 		events.Send(fs.FileHashed{
 			Idx:  f.idx,

@@ -91,7 +91,11 @@ func (m model) View() string {
 		case archiveStarted:
 			fmt.Fprintf(&b, "scanning %s\n", archive.fs.Root())
 		case archiveScanned:
-			fmt.Fprintf(&b, "hashing %s\n", archive.fs.Root())
+			var done float64 = 100
+			if archive.size > 0 {
+				done = float64(archive.done) * 100 / float64(archive.size)
+			}
+			fmt.Fprintf(&b, "hashing %5.2f: %s\n", done, archive.fs.Root())
 		}
 	}
 	m <- state
