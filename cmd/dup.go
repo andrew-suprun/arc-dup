@@ -25,11 +25,11 @@ func main() {
 
 	var lc = lifecycle.New()
 	var fss []fs.FS
-	if len(os.Args) > 1 && (os.Args[1] == "-sim") {
-		fss = []fs.FS{mockfs.New("origin", lc), mockfs.New("copy 1", lc), mockfs.New("copy 2", lc)}
+	if len(os.Args) > 1 && os.Args[1] == "-sim" {
+		fss = []fs.FS{mockfs.New("origin", 0, lc), mockfs.New("copy 1", 1, lc), mockfs.New("copy 2", 2, lc)}
 	} else {
 		fss = make([]fs.FS, len(os.Args)-1)
-		for _, path := range os.Args[1:] {
+		for idx, path := range os.Args[1:] {
 			err := os.MkdirAll(path, 0755)
 			if err != nil {
 				log.Printf("Failed to scan archives: %W\n", err)
@@ -40,7 +40,7 @@ func main() {
 				log.Printf("Failed to scan archives: %W\n", err)
 				panic(err)
 			}
-			fss = append(fss, realfs.New(path, lc))
+			fss = append(fss, realfs.New(path, idx, lc))
 		}
 	}
 

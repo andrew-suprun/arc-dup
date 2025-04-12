@@ -44,12 +44,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.choices)-1 {
 				m.cursor++
 			}
-		case "enter", " ":
+		case "enter":
 			_, ok := m.selected[m.cursor]
 			if ok {
 				delete(m.selected, m.cursor)
 			} else {
 				m.selected[m.cursor] = struct{}{}
+			}
+		case " ":
+			if len(m.choices) == 3 {
+				m.choices = append(m.choices, "foobar")
+			} else {
+				m.choices = m.choices[:3]
 			}
 		}
 	}
@@ -88,6 +94,7 @@ func main() {
 	defer f.Close()
 
 	p := tea.NewProgram(initialModel(), tea.WithMouseCellMotion())
+	p.Send(1)
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)

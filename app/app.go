@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,11 +14,16 @@ import (
 
 func Run(fss []fs.FS, lc *lifecycle.Lifecycle) {
 	m := make(model, 1)
-	m <- &state{fss: fss, lc: lc}
 	p := tea.NewProgram(m)
+
+	scanStates := make([]scanState, len(fss))
+	state := &state{fss: fss, lc: lc, events: events{p}, scanStates: scanStates}
+
 	for _, fs := range fss {
-		go fs.Run()
+		fs.Scan(state.events)
 	}
+
+	m <- state
 
 	go func() {
 		for i := 0; ; i++ {
@@ -31,6 +37,14 @@ func Run(fss []fs.FS, lc *lifecycle.Lifecycle) {
 	}
 }
 
+type events struct {
+	p *tea.Program
+}
+
+func (e events) Send(event any) {
+	e.p.Send(event)
+}
+
 type model chan *state
 
 func (m model) Init() tea.Cmd {
@@ -39,28 +53,37 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case int:
-		state := <-m
-		state.i++
-		m <- state
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		}
+
+	case fs.EventDebugScan:
+		state := <-m
+		state.scanStates[msg.Idx].n = msg.N
+		m <- state
 	}
 	return m, nil
 }
 
 func (m model) View() string {
 	state := <-m
-	result := fmt.Sprintf("Hi: %d\n", state.i)
+	b := strings.Builder{}
+	for i, scanState := range state.scanStates {
+		fmt.Fprintf(&b, "scanning %d: %d\n", i, scanState.n)
+	}
 	m <- state
-	return result
+	return b.String()
 }
 
 type state struct {
-	i   int
-	fss []fs.FS
-	lc  *lifecycle.Lifecycle
+	fss        []fs.FS
+	lc         *lifecycle.Lifecycle
+	events     events
+	scanStates []scanState
+}
+
+type scanState struct {
+	n int
 }

@@ -1,29 +1,29 @@
 package mockfs
 
-import "dup/lifecycle"
+import (
+	"dup/fs"
+	"dup/lifecycle"
+	"time"
+)
 
 type FS struct {
-	path     string
-	lc       *lifecycle.Lifecycle
-	commands chan any
-	events   chan any
+	path string
+	idx  int
+	lc   *lifecycle.Lifecycle
 }
 
-func New(path string, lc *lifecycle.Lifecycle) *FS {
-	return &FS{
-		path:     path,
-		lc:       lc,
-		commands: make(chan any, 1),
-		events:   make(chan any, 10),
-	}
+func New(path string, idx int, lc *lifecycle.Lifecycle) *FS {
+	return &FS{path: path, idx: idx, lc: lc}
 }
 
-func (fs *FS) Commands() chan<- any {
-	return fs.commands
+func (fsys *FS) Scan(events fs.Events) {
+	go func() {
+		for i := range 30 {
+			time.Sleep(time.Millisecond * 100)
+			events.Send(fs.EventDebugScan{Idx: fsys.idx, N: i})
+		}
+	}()
 }
 
-func (fs *FS) Events() <-chan any {
-	return fs.events
+func (fs *FS) Sync(commands []any, events fs.Events) {
 }
-
-func (fs *FS) Run() {}

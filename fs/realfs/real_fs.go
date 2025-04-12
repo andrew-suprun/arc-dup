@@ -6,34 +6,25 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
+	"dup/fs"
 	"dup/lifecycle"
 )
 
 type FS struct {
-	path     string
-	lc       *lifecycle.Lifecycle
-	commands chan any
-	events   chan any
+	path string
+	idx  int
+	lc   *lifecycle.Lifecycle
 }
 
-func New(path string, lc *lifecycle.Lifecycle) *FS {
-	return &FS{
-		path:     path,
-		lc:       lc,
-		commands: make(chan any, 1),
-		events:   make(chan any, 10),
-	}
+func New(path string, idx int, lc *lifecycle.Lifecycle) *FS {
+	return &FS{path: path, lc: lc}
 }
 
-func (fs *FS) Commands() chan<- any {
-	return fs.commands
+func (fs *FS) Scan(events fs.Events) {
 }
 
-func (fs *FS) Events() <-chan any {
-	return fs.events
+func (fs *FS) Sync(commands []any, events fs.Events) {
 }
-
-func (fs *FS) Run() {}
 
 func AbsPath(path string) (string, error) {
 	var err error
