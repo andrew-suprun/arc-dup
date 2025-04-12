@@ -1,4 +1,4 @@
-* mock Scan()
+* graceful shutdown
 
 terms?
 source -> copy
