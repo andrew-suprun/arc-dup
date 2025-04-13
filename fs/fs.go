@@ -12,6 +12,20 @@ type FS interface {
 	Sync(commands []any, events Events)
 }
 
+// Commands
+
+type Copy struct {
+	Path     string
+	Hash     string
+	FromRoot string
+	ToRoots  []string
+}
+
+type Rename struct {
+	SourcePath      string
+	DestinationPath string
+}
+
 // Events
 
 type FileMetas struct {

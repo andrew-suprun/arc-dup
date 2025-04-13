@@ -42,7 +42,6 @@ func (f *FS) scanArchive(events fs.Events) {
 		Idx:   f.idx,
 		Metas: metas,
 	})
-	time.Sleep(time.Second * time.Duration(f.idx))
 	metas = archives[f.path]
 	for _, file := range metas {
 		events.Send(fs.FileHashed{
@@ -59,8 +58,8 @@ func (f *FS) scanArchive(events fs.Events) {
 var archives = map[string][]fs.FileMeta{}
 
 func init() {
-	or := readMeta()
-	// or := []fs.FileMeta{}
+	// or := readMeta()
+	or := []fs.FileMeta{}
 
 	c1 := slices.Clone(or)
 	c2 := slices.Clone(or)
@@ -80,10 +79,10 @@ func init() {
 	})
 
 	or = append(or, fs.FileMeta{
-		Path:    "xxx",
-		Size:    99900000,
+		Path:    "ccc",
+		Size:    12356700,
 		ModTime: time.Now(),
-		Hash:    "xxx",
+		Hash:    "ccc",
 	})
 
 	or = append(or, fs.FileMeta{
@@ -136,24 +135,24 @@ func init() {
 	})
 
 	or = append(or, fs.FileMeta{
-		Path:    "nnn/mmm2/ccc",
+		Path:    "ddd",
 		Size:    99900000,
 		ModTime: time.Now(),
-		Hash:    "nnn/mmm2/ccc",
+		Hash:    "ddd",
+	})
+
+	c1 = append(c1, fs.FileMeta{
+		Path:    "ccc",
+		Size:    12300000,
+		ModTime: time.Now(),
+		Hash:    "bbb",
 	})
 
 	c1 = append(c1, fs.FileMeta{
 		Path:    "bbb",
-		Size:    11111111,
+		Size:    12356700,
 		ModTime: time.Now(),
 		Hash:    "ccc",
-	})
-
-	c1 = append(c1, fs.FileMeta{
-		Path:    "aaa/bbb/ccc",
-		Size:    12300000,
-		ModTime: time.Now(),
-		Hash:    "bbb",
 	})
 
 	c1 = append(c1, fs.FileMeta{
@@ -165,6 +164,13 @@ func init() {
 
 	c1 = append(c1, fs.FileMeta{
 		Path:    "yyy",
+		Size:    99900000,
+		ModTime: time.Now(),
+		Hash:    "xxx",
+	})
+
+	c1 = append(c1, fs.FileMeta{
+		Path:    "zzz",
 		Size:    99900000,
 		ModTime: time.Now(),
 		Hash:    "xxx",
@@ -209,10 +215,10 @@ func init() {
 		or[i].Idx = 0
 	}
 	for i := range c1 {
-		or[i].Idx = 1
+		c1[i].Idx = 1
 	}
 	for i := range c2 {
-		or[i].Idx = 2
+		c2[i].Idx = 2
 	}
 
 	archives = map[string][]fs.FileMeta{
