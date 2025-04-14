@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -209,6 +210,13 @@ func (app *app) analyzeArchives() {
 	app.backupExcessFiles()
 	app.resolveConflicts()
 	app.renameAndCopyFiles()
+
+	commands := app.archives[0].commands
+	sort.Slice(commands, func(i, j int) bool {
+		iCmd := commands[i].(fs.Copy)
+		jCmd := commands[j].(fs.Copy)
+		return iCmd.Path < jCmd.Path
+	})
 
 	for i, archive := range app.archives {
 		log.Println("---", i)
