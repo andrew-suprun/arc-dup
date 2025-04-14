@@ -5,6 +5,7 @@ import (
 	"dup/fs"
 	"dup/lifecycle"
 	"encoding/csv"
+	"log"
 	"os"
 	"slices"
 	"strconv"
@@ -26,40 +27,85 @@ func (fsys *FS) Root() string {
 }
 
 func (fsys *FS) Scan(events fs.Events) {
-	go fsys.scanArchive(events)
+	go fsys.scan(events)
 }
 
-func (fs *FS) Sync(commands []any, events fs.Events) {
+func (fsys *FS) Sync(commands []any, events fs.Events) {
+	go fsys.sync(commands, events)
 }
 
-func (f *FS) scanArchive(events fs.Events) {
+func (fsys *FS) scan(events fs.Events) {
 	metas := []fs.FileMeta{}
-	for _, meta := range archives[f.path] {
+	for _, meta := range archives[fsys.path] {
 		meta.Hash = ""
 		metas = append(metas, meta)
 	}
 	events.Send(fs.FileMetas{
-		Idx:   f.idx,
+		Idx:   fsys.idx,
 		Metas: metas,
 	})
-	metas = archives[f.path]
+	metas = archives[fsys.path]
 	for _, file := range metas {
 		events.Send(fs.FileHashed{
-			Idx:  f.idx,
+			Idx:  fsys.idx,
 			Path: file.Path,
 			Hash: file.Hash,
 		})
 		time.Sleep(time.Millisecond)
 	}
 
-	events.Send(fs.ArchiveHashed{Idx: f.idx})
+	events.Send(fs.ArchiveHashed{Idx: fsys.idx})
+}
+
+func (fsys *FS) sync(commands []any, events fs.Events) {
+	for _, command := range commands {
+		log.Printf("FS: command %#v\n", command)
+		switch cmd := command.(type) {
+		case fs.Rename:
+			events.Send(fs.RenamingFile{
+				Idx:  fsys.idx,
+				Path: cmd.DestinationPath,
+			})
+		case fs.Copy:
+			size := 0
+			for _, file := range archives["origin"] {
+				if file.Path == cmd.Path {
+					size = file.Size
+					break
+				}
+			}
+			progress := 0
+			for {
+				delta := 100_000
+				if delta > size-progress {
+					delta = size - progress
+				}
+				if fsys.lc.ShoudStop() {
+					return
+				}
+				events.Send(fs.CopyingFile{
+					Idx:  fsys.idx,
+					Path: cmd.Path,
+					Size: delta,
+				})
+				time.Sleep(time.Millisecond)
+				progress += delta
+				if progress >= size {
+					break
+				}
+			}
+		}
+	}
+	events.Send(fs.Synced{
+		Idx: fsys.idx,
+	})
 }
 
 var archives = map[string][]fs.FileMeta{}
 
 func init() {
-	// or := readMeta()
-	or := []fs.FileMeta{}
+	or := readMeta()
+	// or := []fs.FileMeta{}
 
 	c1 := slices.Clone(or)
 	c2 := slices.Clone(or)

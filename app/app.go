@@ -23,10 +23,11 @@ func Run(fss []fs.FS, lc *lifecycle.Lifecycle) {
 	}
 
 	app := &app{
-		archives: archives,
-		lc:       lc,
-		events:   events{p},
-		backup:   fmt.Sprintf("~~~%s~~~", time.Now().UTC().Format(time.RFC3339)),
+		archives:        archives,
+		lc:              lc,
+		events:          events{p},
+		backup:          fmt.Sprintf("~~~%s~~~", time.Now().UTC().Format(time.RFC3339)),
+		syncingArchives: len(archives) - 1,
 	}
 	m <- app
 
@@ -53,10 +54,18 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+type quit struct{}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	app := <-m
+	defer func() { m <- app }()
+
 	switch msg := msg.(type) {
+	case quit:
+		// TODO: Graceful shutdon
+		return m, tea.Quit
+
 	case tea.KeyMsg:
-		log.Printf("key %s", msg.String())
 		switch msg.String() {
 		case "esc":
 			// TODO: Graceful shutdon
@@ -64,8 +73,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case fs.FileMetas:
-		state := <-m
-		archive := state.archives[msg.Idx]
+		archive := app.archives[msg.Idx]
 		for _, meta := range msg.Metas {
 			archive.files[meta.Path] = &file{
 				path:    meta.Path,
@@ -77,31 +85,70 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				archive.size++
 			}
 		}
-		m <- state
 
 	case fs.FileHashed:
-		state := <-m
-		archive := state.archives[msg.Idx]
+		archive := app.archives[msg.Idx]
 		file := archive.findFile(msg.Path)
 		file.hash = msg.Hash
 		archive.done++
-		archive.archiveState = archiveScanned
-		m <- state
+		archive.state = hashing
 
 	case fs.ArchiveHashed:
-		app := <-m
 		archive := app.archives[msg.Idx]
-		archive.archiveState = archiveHashed
+		archive.state = hashed
 		allHashed := true
 		for _, archive := range app.archives {
-			if archive.archiveState != archiveHashed {
+			if archive.state != hashed {
 				allHashed = false
 			}
 		}
 		if allHashed {
 			app.analyzeArchives()
+			app.state = appRenaming
+			for _, archive := range app.archives[1:] {
+				archive.done = 0
+				archive.size = len(archive.commands)
+				archive.fs.Sync(archive.commands, app.events)
+			}
 		}
-		m <- app
+
+	case fs.RenamingFile:
+		archive := app.archives[msg.Idx]
+		archive.done++
+
+	case fs.CopyingFile:
+		archive := app.archives[msg.Idx]
+		archive.done += msg.Size
+		file := archive.files[msg.Path]
+		if archive.filePath != file.path {
+			archive.filePath = file.path
+			archive.fileSize = file.size
+			archive.fileCopyed = msg.Size
+		} else {
+			archive.fileCopyed += msg.Size
+			if archive.fileCopyed >= file.size {
+				archive.fileCopyed = file.size
+				archive.done += file.size - archive.fileCopyed
+			}
+		}
+
+	case fs.Synced:
+		if app.state == appCopying {
+			app.state = appDone
+			return m, func() tea.Msg { return quit{} }
+		}
+		app.syncingArchives--
+		if app.syncingArchives == 0 {
+			archive := app.archives[0]
+			for _, cmd := range archive.commands {
+				path := cmd.(fs.Copy).Path
+				file := archive.files[path]
+				archive.size += file.size
+			}
+			archive.done = 0
+			app.state = appCopying
+			archive.fs.Sync(archive.commands, app.events)
+		}
 	}
 	return m, nil
 }
@@ -109,20 +156,49 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	app := <-m
 	b := strings.Builder{}
-	b.WriteString("Analyzing archives:\n")
-	for _, archive := range app.archives {
-		switch archive.archiveState {
-		case archiveStarted:
-			fmt.Fprintf(&b, "scanning:        %s\n", archive.fs.Root())
-		case archiveScanned:
+	switch app.state {
+	case appStarted:
+		for _, archive := range app.archives {
+			switch archive.state {
+			case scanning:
+				fmt.Fprintf(&b, "scanning:         %s\n", archive.fs.Root())
+			case hashing:
+				var done float64 = 100
+				if archive.size > 0 {
+					done = float64(archive.done) * 100 / float64(archive.size)
+				}
+				fmt.Fprintf(&b, "hashing  %6.2f%%: %s\n", done, archive.fs.Root())
+			case hashed:
+				fmt.Fprintf(&b, "hashed:           %s\n", archive.fs.Root())
+			}
+		}
+	case appRenaming:
+		for i, archive := range app.archives {
+			if i == 0 {
+				fmt.Fprintf(&b, "waiting:           %s\n", archive.fs.Root())
+				continue
+			}
 			var done float64 = 100
 			if archive.size > 0 {
 				done = float64(archive.done) * 100 / float64(archive.size)
 			}
-			fmt.Fprintf(&b, "hashing %6.2f%%: %s\n", done, archive.fs.Root())
-		case archiveHashed:
-			fmt.Fprintf(&b, "hashed:          %s\n", archive.fs.Root())
+			fmt.Fprintf(&b, "renaming %6.2f%%: %s\n", done, archive.fs.Root())
+			fmt.Fprintf(&b, "    file        : %s\n", archive.filePath)
 		}
+
+	case appCopying:
+		archive := app.archives[0]
+		var done float64 = 100
+		if archive.size > 0 {
+			done = float64(archive.done) * 100 / float64(archive.size)
+		}
+		var fileDone float64 = 100
+		if archive.fileSize > 0 {
+			fileDone = float64(archive.fileCopyed) * 100 / float64(archive.fileSize)
+		}
+		dir, file := filepath.Split(archive.filePath)
+		fmt.Fprintf(&b, "copying  %6.2f%%: %s/%s\n", done, archive.fs.Root(), dir)
+		fmt.Fprintf(&b, "   file  %6.2f%%: %s\n", fileDone, file)
 	}
 	m <- app
 	return b.String()
@@ -132,8 +208,7 @@ func (app *app) analyzeArchives() {
 	app.ignoreIdenticalFiles()
 	app.backupExcessFiles()
 	app.resolveConflicts()
-	app.renameFiles()
-	app.copyFiles()
+	app.renameAndCopyFiles()
 
 	for i, archive := range app.archives {
 		log.Println("---", i)
@@ -157,40 +232,29 @@ func (app *app) ignoreIdenticalFiles() {
 			identicalFiles = append(identicalFiles, original.path)
 		}
 	}
-	for _, path := range identicalFiles {
-		for _, archive := range app.archives {
+	for _, archive := range app.archives {
+		for _, path := range identicalFiles {
 			delete(archive.files, path)
 		}
 	}
 }
 
 func (app *app) backupExcessFiles() {
-	byHash := []map[string][]string{}
-	for _, archive := range app.archives {
-		hashMap := map[string][]string{}
-		for _, file := range archive.files {
-			if paths, ok := hashMap[file.hash]; ok {
-				paths = append(paths, file.path)
-				hashMap[file.hash] = paths
-			} else {
-				hashMap[file.hash] = []string{file.path}
+	originalsByHash := app.archives[0].byHash()
+	for _, archive := range app.archives[1:] {
+		copiesByHash := archive.byHash()
+		for hash, originals := range originalsByHash {
+			copies := copiesByHash[hash]
+			if len(originals) <= len(copies) {
+				continue
 			}
-		}
-		byHash = append(byHash, hashMap)
-	}
-	originalHashMap := byHash[0]
-	for i, hashMap := range byHash[1:] {
-		archive := app.archives[i+1]
-		for hash, files := range hashMap {
-			originalFiles := originalHashMap[hash]
-			for len(files) > len(originalFiles) {
-				path := files[len(files)-1]
+			for i := len(originals); i < len(copies); i++ {
+				path := copies[i]
 				archive.commands = append(archive.commands, fs.Rename{
 					SourcePath:      path,
 					DestinationPath: filepath.Join(app.backup, path),
 				})
 				delete(archive.files, path)
-				files = files[:len(files)-1]
 			}
 		}
 	}
@@ -214,68 +278,92 @@ func (app *app) resolveConflicts() {
 	}
 }
 
-func (app *app) renameFiles() {
-	byHash := []map[string][]string{}
-	for _, archive := range app.archives {
-		hashMap := map[string][]string{}
-		for _, file := range archive.files {
-			if paths, ok := hashMap[file.hash]; ok {
-				paths = append(paths, file.path)
-				hashMap[file.hash] = paths
-			} else {
-				hashMap[file.hash] = []string{file.path}
+func (app *app) renameAndCopyFiles() {
+	toCopy := map[string][]string{}
+	originalsByHash := app.archives[0].byHash()
+	for _, archive := range app.archives[1:] {
+		copiesByHash := archive.byHash()
+		for hash, originals := range originalsByHash {
+			copies := copiesByHash[hash]
+			for i, original := range originals {
+				if i < len(copies) {
+					archive.commands = append(archive.commands, fs.Rename{
+						SourcePath:      copies[i],
+						DestinationPath: original,
+					})
+				} else {
+					newRoots := toCopy[original]
+					newRoots = append(newRoots, archive.fs.Root())
+					toCopy[original] = newRoots
+				}
 			}
 		}
-		byHash = append(byHash, hashMap)
 	}
-	for hash, files := range byHash[0] {
-		otherFiles := [][]string{}
-		for _, hashMap := range byHash[1:] {
-			otherFiles = append(otherFiles, hashMap[hash])
+	for path, roots := range toCopy {
+		archive := app.archives[0]
+		if len(roots) > 0 {
+			archive.commands = append(archive.commands, fs.Copy{
+				Path:    path,
+				Hash:    archive.files[path].hash,
+				ToRoots: roots,
+			})
 		}
 
 	}
 }
 
-func (app *app) copyFiles() {
+func (arc *archive) byHash() map[string][]string {
+	result := map[string][]string{}
+	for _, file := range arc.files {
+		paths := result[file.hash]
+		paths = append(paths, file.path)
+		result[file.hash] = paths
+	}
+	return result
 }
 
 type appState int
 
 const (
 	appStarted appState = iota
-	appAnalyzed
-	appRunning
+	appRenaming
+	appCopying
+	appDone
 )
 
 type archiveState int
 
 const (
-	archiveStarted archiveState = iota
-	archiveScanned
-	archiveHashed
+	scanning archiveState = iota
+	hashing
+	hashed
+	renaming
 )
 
 type app struct {
-	archives []*archive
-	lc       *lifecycle.Lifecycle
-	events   events
-	backup   string
+	state           appState
+	archives        []*archive
+	lc              *lifecycle.Lifecycle
+	events          events
+	backup          string
+	syncingArchives int
 }
 
 type archive struct {
-	archiveState archiveState
-	fs           fs.FS
-	files        files
-	commands     []any
-	size         int
-	done         int
+	state      archiveState
+	fs         fs.FS
+	files      files
+	commands   []any
+	size       int
+	done       int
+	filePath   string
+	fileSize   int
+	fileCopyed int
 }
 
 type file struct {
 	path    string
 	size    int
-	done    int
 	modTime time.Time
 	hash    string
 }

@@ -15,10 +15,9 @@ type FS interface {
 // Commands
 
 type Copy struct {
-	Path     string
-	Hash     string
-	FromRoot string
-	ToRoots  []string
+	Path    string
+	Hash    string
+	ToRoots []string
 }
 
 type Rename struct {
@@ -47,5 +46,20 @@ type FileHashed struct {
 }
 
 type ArchiveHashed struct {
+	Idx int
+}
+
+type RenamingFile struct {
+	Idx  int
+	Path string
+}
+
+type CopyingFile struct {
+	Idx  int
+	Path string
+	Size int
+}
+
+type Synced struct {
 	Idx int
 }
