@@ -12,6 +12,14 @@ type FS interface {
 	Sync(commands []any, events Events)
 }
 
+type FileMeta struct {
+	Idx     int
+	Path    string
+	Size    int
+	ModTime time.Time
+	Hash    string
+}
+
 // Commands
 
 type Copy struct {
@@ -30,13 +38,6 @@ type Rename struct {
 type FileMetas struct {
 	Idx   int
 	Metas []FileMeta
-}
-type FileMeta struct {
-	Idx     int
-	Path    string
-	Size    int
-	ModTime time.Time
-	Hash    string
 }
 
 type FileHashed struct {

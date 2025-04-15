@@ -28,7 +28,7 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "-sim" {
 		fss = []fs.FS{mockfs.New("origin", 0, lc), mockfs.New("copy 1", 1, lc), mockfs.New("copy 2", 2, lc)}
 	} else {
-		fss = make([]fs.FS, len(os.Args)-1)
+		fss = make([]fs.FS, 0, len(os.Args)-1)
 		for idx, path := range os.Args[1:] {
 			err := os.MkdirAll(path, 0755)
 			if err != nil {

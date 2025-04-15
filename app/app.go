@@ -30,11 +30,12 @@ func Run(fss []fs.FS, lc *lifecycle.Lifecycle) {
 		backup:          fmt.Sprintf("~~~%s~~~", time.Now().UTC().Format(time.RFC3339)),
 		syncingArchives: len(archives) - 1,
 	}
-	m <- app
 
 	for _, fs := range fss {
 		fs.Scan(app.events)
 	}
+
+	m <- app
 
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
@@ -248,12 +249,22 @@ func (app *app) ignoreIdenticalFiles() {
 }
 
 func (app *app) backupExcessFiles() {
-	originalsByHash := app.archives[0].byHash()
-	for _, archive := range app.archives[1:] {
-		copiesByHash := archive.byHash()
-		for hash, originals := range originalsByHash {
-			copies := copiesByHash[hash]
+	for hash, originals := range app.archives[0].byHash() {
+		log.Printf("original hash %q\n", hash)
+		for _, file := range originals {
+			log.Printf("  file %q\n", file)
+		}
+
+		for i, archive := range app.archives[1:] {
+			copies := archive.byHash()[hash]
+
+			log.Printf("copy %d hash %q\n", i+1, hash)
+			for _, file := range copies {
+				log.Printf("  file %q\n", file)
+			}
+
 			if len(originals) <= len(copies) {
+				log.Printf("    continue\n")
 				continue
 			}
 			for i := len(originals); i < len(copies); i++ {
@@ -263,6 +274,10 @@ func (app *app) backupExcessFiles() {
 					DestinationPath: filepath.Join(app.backup, path),
 				})
 				delete(archive.files, path)
+				log.Printf("    remove path\n")
+			}
+			for _, cmd := range archive.commands {
+				log.Printf("    cmd %#v\n", cmd)
 			}
 		}
 	}
