@@ -68,6 +68,9 @@ func (fsys *FS) scan(events fs.Events) {
 
 	osfs := os.DirFS(fsys.root)
 	err := iofs.WalkDir(osfs, ".", func(path string, d iofs.DirEntry, err error) error {
+		if d.IsDir() && strings.HasPrefix(d.Name(), "~~~") {
+			return iofs.SkipDir
+		}
 		if fsys.lc.ShoudStop() || !d.Type().IsRegular() || strings.HasPrefix(d.Name(), ".") {
 			return nil
 		}

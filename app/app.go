@@ -218,13 +218,6 @@ func (app *app) analyzeArchives() {
 		jCmd := commands[j].(fs.Copy)
 		return iCmd.Path < jCmd.Path
 	})
-
-	for i, archive := range app.archives {
-		log.Println("---", i)
-		for _, command := range archive.commands {
-			log.Printf("  %#v\n", command)
-		}
-	}
 }
 
 func (app *app) ignoreIdenticalFiles() {
@@ -249,35 +242,30 @@ func (app *app) ignoreIdenticalFiles() {
 }
 
 func (app *app) backupExcessFiles() {
-	for hash, originals := range app.archives[0].byHash() {
-		log.Printf("original hash %q\n", hash)
-		for _, file := range originals {
-			log.Printf("  file %q\n", file)
+	hashes := map[string]struct{}{}
+	for _, archive := range app.archives {
+		for _, file := range archive.files {
+			hashes[file.hash] = struct{}{}
 		}
+	}
 
-		for i, archive := range app.archives[1:] {
-			copies := archive.byHash()[hash]
+	originals := app.archives[0].byHash()
+	for _, archive := range app.archives[1:] {
+		copies := archive.byHash()
+		for hash := range hashes {
+			originalFiles := originals[hash]
+			copyFiles := copies[hash]
 
-			log.Printf("copy %d hash %q\n", i+1, hash)
-			for _, file := range copies {
-				log.Printf("  file %q\n", file)
-			}
-
-			if len(originals) <= len(copies) {
-				log.Printf("    continue\n")
+			if len(originalFiles) >= len(copyFiles) {
 				continue
 			}
-			for i := len(originals); i < len(copies); i++ {
-				path := copies[i]
+			for i := len(originalFiles); i < len(copyFiles); i++ {
+				path := copyFiles[i]
 				archive.commands = append(archive.commands, fs.Rename{
 					SourcePath:      path,
 					DestinationPath: filepath.Join(app.backup, path),
 				})
 				delete(archive.files, path)
-				log.Printf("    remove path\n")
-			}
-			for _, cmd := range archive.commands {
-				log.Printf("    cmd %#v\n", cmd)
 			}
 		}
 	}
