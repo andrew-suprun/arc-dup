@@ -64,14 +64,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case quit:
-		// TODO: Graceful shutdon
 		return m, tea.Quit
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
-			// TODO: Graceful shutdon
-			return m, tea.Quit
+			go func() {
+				app.lc.Stop()
+				app.events.Send(quit{})
+			}()
+			return m, nil
 		}
 
 	case fs.FileMetas:
@@ -137,6 +139,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fs.Synced:
 		if app.state == appCopying {
 			app.state = appDone
+			app.lc.Stop()
 			return m, func() tea.Msg { return quit{} }
 		}
 		app.syncingArchives--

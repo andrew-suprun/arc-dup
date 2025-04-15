@@ -225,8 +225,10 @@ func (fsys *FS) copyFile(cmd fs.Copy, events fs.Events) {
 }
 
 func (fsys *FS) writer(root, path, hash string, size int64, modTime time.Time, events chan []byte) {
+	fsys.lc.Started()
+	defer fsys.lc.Done()
+
 	fullPath := filepath.Join(root, path)
-	log.Printf("writer: path %q size %d hash %q modTime %v\n", fullPath, size, hash, modTime)
 
 	dirPath := filepath.Dir(fullPath)
 	_ = os.MkdirAll(dirPath, 0755)
@@ -238,7 +240,6 @@ func (fsys *FS) writer(root, path, hash string, size int64, modTime time.Time, e
 	var err error
 	defer func() {
 		if err != nil {
-			log.Printf("Error: failed to write to file %q: %#v\n", fullPath, err)
 			os.Remove(fullPath)
 			return
 		}
@@ -268,24 +269,16 @@ func (fsys *FS) writer(root, path, hash string, size int64, modTime time.Time, e
 				csvWriter.Flush()
 				_ = hashInfoFile.Close()
 			}
-
-			if fsys.lc.ShoudStop() {
-				_ = os.Remove(dirPath)
-			}
 		}
 	}()
 	for buf := range events {
-		if fsys.lc.ShoudStop() {
-			return
-		}
-
 		n, writeErr := file.Write(buf)
 		if writeErr != nil {
 			err = writeErr
 			return
 		}
 		if n < len(buf) {
-			err = errors.New("Short write")
+			err = errors.New("short write")
 			return
 		}
 	}
