@@ -142,10 +142,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case fs.Synced:
 		if app.state == appCopying {
-			app.state = appDone
 			app.lc.Stop()
 			app.state = appDone
-			return m, nil
+			return m, func() tea.Msg { return "trigger update" }
+
 		}
 		app.syncingArchives--
 		if app.syncingArchives == 0 {
