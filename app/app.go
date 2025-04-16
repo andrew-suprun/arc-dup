@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"dup/fs"
 	"dup/lifecycle"
@@ -56,22 +57,25 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
-type quit struct{}
-
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	app := <-m
 	defer func() { m <- app }()
 
-	switch msg := msg.(type) {
-	case quit:
+	if app.state == appDone {
 		return m, tea.Quit
+	}
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		app.screenWidth = msg.Width
 
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
 			go func() {
 				app.lc.Stop()
-				app.events.Send(quit{})
+				app.state = appDone
+				app.events.Send("trigger update")
 			}()
 			return m, nil
 		}
@@ -140,7 +144,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if app.state == appCopying {
 			app.state = appDone
 			app.lc.Stop()
-			return m, func() tea.Msg { return quit{} }
+			app.state = appDone
+			return m, nil
 		}
 		app.syncingArchives--
 		if app.syncingArchives == 0 {
@@ -166,44 +171,27 @@ func (m model) View() string {
 		for _, archive := range app.archives {
 			switch archive.state {
 			case scanning:
-				fmt.Fprintf(&b, "scanning:         %s\n", archive.fs.Root())
+				fmt.Fprintf(&b, "scanning            %s\n", archive.fs.Root())
 			case hashing:
-				var done float64 = 100
-				if archive.size > 0 {
-					done = float64(archive.done) * 100 / float64(archive.size)
-				}
-				fmt.Fprintf(&b, "hashing  %6.2f%%: %s\n", done, archive.fs.Root())
+				fmt.Fprintf(&b, "hashing  %s %s\n", progressBar(archive.done, archive.size, 10), archive.fs.Root())
 			case hashed:
-				fmt.Fprintf(&b, "hashed:           %s\n", archive.fs.Root())
+				fmt.Fprintf(&b, "hashed              %s\n", archive.fs.Root())
 			}
 		}
 	case appRenaming:
 		for i, archive := range app.archives {
 			if i == 0 {
-				fmt.Fprintf(&b, "waiting:           %s\n", archive.fs.Root())
+				fmt.Fprintf(&b, "waiting              %s\n", archive.fs.Root())
 				continue
 			}
-			var done float64 = 100
-			if archive.size > 0 {
-				done = float64(archive.done) * 100 / float64(archive.size)
-			}
-			fmt.Fprintf(&b, "renaming %6.2f%%: %s\n", done, archive.fs.Root())
-			fmt.Fprintf(&b, "    file        : %s\n", archive.filePath)
+			fmt.Fprintf(&b, "renaming %s %s\n", progressBar(archive.done, archive.size, 10), archive.fs.Root())
 		}
 
 	case appCopying:
 		archive := app.archives[0]
-		var done float64 = 100
-		if archive.size > 0 {
-			done = float64(archive.done) * 100 / float64(archive.size)
-		}
-		var fileDone float64 = 100
-		if archive.fileSize > 0 {
-			fileDone = float64(archive.fileCopyed) * 100 / float64(archive.fileSize)
-		}
-		dir, file := filepath.Split(archive.filePath)
-		fmt.Fprintf(&b, "copying  %6.2f%%: %s/%s\n", done, archive.fs.Root(), dir)
-		fmt.Fprintf(&b, "   file  %6.2f%%: %s\n", fileDone, file)
+		width := app.screenWidth - 9
+		fmt.Fprintf(&b, "Copying %s\n", progressBar(archive.done, archive.size, width))
+		fmt.Fprintf(&b, "   file %s %s\n", progressBar(archive.fileCopyed, archive.fileSize, 10), archive.filePath)
 	}
 	m <- app
 	return b.String()
@@ -361,6 +349,7 @@ type app struct {
 	events          events
 	backup          string
 	syncingArchives int
+	screenWidth     int
 }
 
 type archive struct {
@@ -391,4 +380,28 @@ func (arc *archive) findFile(path string) *file {
 		}
 	}
 	return nil
+}
+
+var style = lipgloss.NewStyle().
+	Background(lipgloss.Color("#C0C0C0")).
+	Foreground(lipgloss.Color("#7D56F4"))
+
+func progressBar(done, size, width int) string {
+	runes := make([]rune, width)
+	value := 0
+	if size > 0 {
+		value = (done*width*8 + size/2) / size
+	}
+	idx := 0
+	for ; idx < value/8; idx++ {
+		runes[idx] = '█'
+	}
+	if value%8 > 0 {
+		runes[idx] = []rune{' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉'}[value%8]
+		idx++
+	}
+	for ; idx < int(width); idx++ {
+		runes[idx] = ' '
+	}
+	return style.Render(string(runes))
 }

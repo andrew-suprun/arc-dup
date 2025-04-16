@@ -35,6 +35,7 @@ func (fsys *FS) Sync(commands []any, events fs.Events) {
 }
 
 func (fsys *FS) scan(events fs.Events) {
+	time.Sleep(time.Second * time.Duration(fsys.idx))
 	metas := []fs.FileMeta{}
 	for _, meta := range archives[fsys.path] {
 		meta.Hash = ""
