@@ -28,7 +28,7 @@ func Run(fss []fs.FS, lc *lifecycle.Lifecycle) {
 		archives:        archives,
 		lc:              lc,
 		events:          events{p},
-		backup:          fmt.Sprintf("~~~%s~~~", time.Now().UTC().Format(time.RFC3339)),
+		backup:          time.Now().Format("~~~060102-150405~~~"),
 		syncingArchives: len(archives) - 1,
 	}
 
