@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 
@@ -13,15 +14,20 @@ import (
 )
 
 func main() {
-	logFile, err := os.Create("dup.log")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	defer logFile.Close()
+	logName := os.Getenv("DUP_LOG")
+	if logName != "" {
+		logFile, err := os.Create(logName)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		defer logFile.Close()
 
-	log.SetOutput(logFile)
-	log.SetFlags(log.Lmicroseconds)
+		log.SetOutput(logFile)
+		log.SetFlags(log.Lmicroseconds)
+	} else {
+		log.SetOutput(io.Discard)
+	}
 
 	var lc = lifecycle.New()
 	var fss []fs.FS

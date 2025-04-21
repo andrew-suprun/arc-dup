@@ -131,6 +131,7 @@ func (fsys *FS) scan(events fs.Events) {
 		if fsys.lc.ShoudStop() {
 			return
 		}
+		log.Printf("%d: hash %q\n", fsys.idx, meta.file.Path)
 		meta.file.Hash = fsys.hashFile(meta.file)
 		events.Send(fs.FileHashed{
 			Idx:  fsys.idx,
@@ -145,8 +146,10 @@ func (fsys *FS) sync(commands []any, events fs.Events) {
 	for _, cmd := range commands {
 		switch cmd := cmd.(type) {
 		case fs.Rename:
+			log.Printf("rename %q to %q\n", cmd.SourcePath, cmd.DestinationPath)
 			fsys.renameFile(cmd, events)
 		case fs.Copy:
+			log.Printf("copy %q to %v\n", cmd.Path, cmd.ToRoots)
 			fsys.copyFile(cmd, events)
 		}
 	}
