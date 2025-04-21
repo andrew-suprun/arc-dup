@@ -266,6 +266,9 @@ func (app *app) resolveConflicts() {
 	for _, file := range app.archives[0].files {
 		for _, archive := range app.archives[1:] {
 			if other, ok := archive.files[file.path]; ok {
+				if file.hash == other.hash {
+					continue
+				}
 				dir, name := filepath.Split(other.path)
 				newPath := filepath.Join(dir, app.backup+name)
 				archive.commands = append(archive.commands, fs.Rename{
