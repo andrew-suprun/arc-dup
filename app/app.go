@@ -189,9 +189,11 @@ func (m model) View() string {
 
 	case appCopying:
 		archive := app.archives[0]
-		width := app.screenWidth - 9
-		fmt.Fprintf(&b, "Copying %s\n", progressBar(archive.done, archive.size, width))
-		fmt.Fprintf(&b, "   file %s %s\n", progressBar(archive.fileCopyed, archive.fileSize, 10), archive.filePath)
+		width := app.screenWidth - 16
+		totalDone := 100 * float64(archive.done) / float64(archive.size)
+		fileDone := 100 * float64(archive.fileCopyed) / float64(archive.fileSize)
+		fmt.Fprintf(&b, "Copying %6.2f %s\n", totalDone, progressBar(archive.done, archive.size, width))
+		fmt.Fprintf(&b, "   file %6.2f %s %s\n", fileDone, progressBar(archive.fileCopyed, archive.fileSize, 10), archive.filePath)
 	}
 	m <- app
 	return b.String()

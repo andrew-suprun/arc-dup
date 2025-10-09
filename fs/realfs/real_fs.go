@@ -248,29 +248,12 @@ func (fsys *FS) writer(root, path, hash string, size int64, modTime time.Time, e
 		}
 
 		if file != nil {
-			info, _ := file.Stat()
-			sys := info.Sys().(*syscall.Stat_t)
-			newSize := info.Size()
 			_ = file.Close()
 			_ = os.Chtimes(fullPath, time.Now(), modTime)
 
-			if newSize != size {
+			info, err := os.Stat(fullPath)
+			if err == nil && info.Size() != size {
 				os.Remove(fullPath)
-			}
-
-			absHashFileName := filepath.Join(root, hashFileName)
-			hashInfoFile, err := os.OpenFile(absHashFileName, os.O_APPEND|os.O_WRONLY, 0644)
-			if err == nil {
-				csvWriter := csv.NewWriter(hashInfoFile)
-				_ = csvWriter.Write([]string{
-					fmt.Sprint(sys.Ino),
-					norm.NFC.String(path),
-					fmt.Sprint(size),
-					modTime.UTC().Format(time.RFC3339Nano),
-					hash,
-				})
-				csvWriter.Flush()
-				_ = hashInfoFile.Close()
 			}
 		}
 	}()
