@@ -71,7 +71,7 @@ func (fsys *FS) scan(events fs.Events) {
 		if d.IsDir() && strings.HasPrefix(d.Name(), "~~~") {
 			return iofs.SkipDir
 		}
-		if fsys.lc.ShoudStop() || !d.Type().IsRegular() || strings.HasPrefix(d.Name(), ".") {
+		if fsys.lc.ShoudStop() || !d.Type().IsRegular() || d.Name() == hashFileName {
 			return nil
 		}
 
@@ -102,7 +102,7 @@ func (fsys *FS) scan(events fs.Events) {
 
 		sys := info.Sys().(*syscall.Stat_t)
 		readMeta := metaMap[sys.Ino]
-		if readMeta != nil && readMeta.ModTime == modTime && readMeta.Size == size {
+		if readMeta != nil && readMeta.ModTime.Equal(modTime) && readMeta.Size == size {
 			file.Hash = readMeta.Hash
 		}
 
