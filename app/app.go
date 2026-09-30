@@ -111,6 +111,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if allHashed {
+			archive := app.archives[0]
+			for _, file := range archive.files {
+				archive.size += file.size
+			}
+
 			app.analyzeArchives()
 			app.state = appRenaming
 			for _, archive := range app.archives[1:] {
@@ -150,12 +155,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		app.syncingArchives--
 		if app.syncingArchives == 0 {
 			archive := app.archives[0]
+			archive.done = archive.size
 			for _, cmd := range archive.commands {
 				path := cmd.(fs.Copy).Path
 				file := archive.files[path]
-				archive.size += file.size
+				archive.done -= file.size
 			}
-			archive.done = 0
+
 			app.state = appCopying
 			archive.fs.Sync(archive.commands, app.events)
 		}
